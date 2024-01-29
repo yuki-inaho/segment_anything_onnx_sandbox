@@ -190,18 +190,21 @@ if __name__ == "__main__":
         help="Path to the image",
     )
     parser.add_argument(
+        "-em",
         "--enc_model_path",
         type=str,
         default="models/image_encoder_vit_b.onnx",
         help="Path to the encoder model",
     )
     parser.add_argument(
+        "-sm",
         "--sam_model_path",
         type=str,
         default="models/sam_vit_b_01ec64.onnx",
         help="Path to the SAM model",
     )
     parser.add_argument(
+        "-ip",
         "--input_point",
         type=str,
         default="960,810",

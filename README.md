@@ -34,3 +34,17 @@ python segment-anything/scripts/export_onnx_model.py \
 --output models/sam_vit_b_01ec64.onnx \
 --return-single-mask
 ```
+
+
+# RUN
+```
+python main.py \
+-i data/apple_5x4.jpg \
+-ip 960,810
+```
+
+```
+python main.py \
+-i data/crab.png \
+-ip 384,512
+```
