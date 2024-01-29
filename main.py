@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 import onnxruntime as ort
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, List
 from copy import deepcopy
 
 
@@ -11,15 +11,35 @@ MEAN_PIX_VALUES = np.array([123.675, 116.28, 103.53])
 STD_PIX_VALUES = np.array([[58.395, 57.12, 57.375]])
 SIZE_FOR_INFERENCE = (1024, 1024)
 
-# 引数からパラメータを設定
-INPUT_POINT = (960, 810)
-
 
 def add_dummy_dim(image: np.ndarray) -> np.ndarray:
+    """
+    Adds a dummy dimension to the input image array.
+
+    Args:
+    image (np.ndarray): The input image array.
+
+    Returns:
+    np.ndarray: The image array with an added dummy dimension.
+    """
     return image[np.newaxis, :, :, :]
 
 
-def as_normalized_float_tensor(image, pad_h, mean_pix_norm, std_pix_norm):
+def as_normalized_float_tensor(
+    image: np.ndarray, pad_h: int, mean_pix_norm: np.ndarray, std_pix_norm: np.ndarray
+) -> np.ndarray:
+    """
+    Converts an image to a normalized float tensor suitable for model input.
+
+    Args:
+    image (np.ndarray): The input image array.
+    pad_h (int): The amount of padding applied to the height of the image.
+    mean_pix_norm (np.ndarray): The mean pixel values for normalization.
+    std_pix_norm (np.ndarray): The standard deviation pixel values for normalization.
+
+    Returns:
+    np.ndarray: The normalized float tensor.
+    """
     image_f = image.copy().astype(np.float32)
     image_f -= np.array(mean_pix_norm)
     image_f /= np.array(std_pix_norm)
@@ -31,7 +51,18 @@ def as_normalized_float_tensor(image, pad_h, mean_pix_norm, std_pix_norm):
 
 def resize_and_pad(
     target_image: np.ndarray, image_size_inference: Tuple[int, int], pad_value: int = 0
-):
+) -> Tuple[np.ndarray, int, float]:
+    """
+    Resizes and pads the input image to a specified size.
+
+    Args:
+    target_image (np.ndarray): The input image array.
+    image_size_inference (Tuple[int, int]): The target size for resizing and padding.
+    pad_value (int, optional): The padding value. Defaults to 0.
+
+    Returns:
+    Tuple[np.ndarray, int, float]: The processed image, amount of padding applied, and the resize rate.
+    """
     _, image_width_raw, _ = target_image.shape
     resize_rate = float(image_size_inference[0]) / image_width_raw
     target_image_resized = cv2.resize(
@@ -57,9 +88,19 @@ def resize_and_pad(
 
 
 def generate_coords_and_labels_from_point(
-    input_point_x, input_point_y, resize_rate_from_orig
-):
-    input_point = np.array([[input_point_x, input_point_y]])
+    input_point_xy: List[int], resize_rate_from_orig: float
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Generates coordinates and labels from a given input point and resize rate.
+
+    Args:
+    input_point_xy (List[int]): The x-coordinate of the input point.
+    resize_rate_from_orig (float): The resize rate from the original image to the processed image.
+
+    Returns:
+    Tuple[np.ndarray, np.ndarray]: The generated coordinates and labels.
+    """
+    input_point = np.array([input_point_xy])
     input_label = np.array([1])
 
     onnx_coord = np.concatenate([input_point, np.array([[0.0, 0.0]])], axis=0)[
@@ -98,7 +139,7 @@ def main(image_path, enc_model_path, sam_model_path, input_point):
     embeddings = encoder.run(None, {"images": image_tensor})[0]
 
     onnx_coord, onnx_label = generate_coords_and_labels_from_point(
-        INPUT_POINT[0], INPUT_POINT[1], resize_rate
+        input_point, resize_rate
     )
 
     # デコーダモデルのロード
@@ -172,7 +213,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input_point",
         type=str,
-        default="321,230",
+        default="960,810",
         help="Input point for segmentation in format x,y (e.g., 321,230)",
     )
 
