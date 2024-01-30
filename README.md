@@ -1,3 +1,5 @@
+<img width="720" alt="sam result" src="https://github.com/yuki-inaho/segment_anything_onnx_sandbox/blob/main/doc/result.jpg">
+
 # Related documents
 
 - https://dev.to/andreygermanov/export-segment-anything-neural-network-to-onnx-the-missing-parts-43c8
