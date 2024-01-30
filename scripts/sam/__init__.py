@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import onnxruntime as ort
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from copy import deepcopy
 
 
@@ -80,26 +80,6 @@ class SegmentationAnythingModule:
 
         return target_image_processed, pad_top, pad_left, resize_rate
 
-    def generate_coords_and_labels_from_point(
-        self, input_point_xy: List[int], resize_rate_from_orig: float
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        input_point = np.array([input_point_xy])
-        input_label = np.array([1])
-
-        onnx_coord = np.concatenate([input_point, np.array([[0.0, 0.0]])], axis=0)[
-            None, :, :
-        ]
-        onnx_label = np.concatenate([input_label, np.array([-1])])[None, :].astype(
-            np.float32
-        )
-
-        coords = deepcopy(onnx_coord).astype(float)
-        coords[..., 0] = coords[..., 0] * resize_rate_from_orig
-        coords[..., 1] = coords[..., 1] * resize_rate_from_orig
-
-        onnx_coord = coords.astype("float32")
-        return onnx_coord, onnx_label
-
     def generate_padded_image(self, image: np.ndarray) -> np.ndarray:
         orig_image_width, orig_image_height = image.shape[1], image.shape[0]
 
@@ -135,7 +115,28 @@ class SegmentationAnythingModule:
         )
         return mask_final
 
-    def decode(
+    def generate_coords_and_labels_from_point(
+        self, input_point_xy: List[int], resize_rate_from_orig: float
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        assert len(input_point_xy) == 2
+        input_point = np.array([input_point_xy])
+        input_label = np.array([1])
+
+        onnx_coord = np.concatenate([input_point, np.array([[0.0, 0.0]])], axis=0)[
+            None, :, :
+        ]
+        onnx_label = np.concatenate([input_label, np.array([-1])])[None, :].astype(
+            np.float32
+        )
+
+        coords = deepcopy(onnx_coord).astype(float)
+        coords[..., 0] = coords[..., 0] * resize_rate_from_orig
+        coords[..., 1] = coords[..., 1] * resize_rate_from_orig
+
+        onnx_coord = coords.astype("float32")
+        return onnx_coord, onnx_label
+
+    def decode_by_point(
         self,
         embeddings: np.ndarray,
         input_point: Tuple[int, int],
@@ -165,7 +166,68 @@ class SegmentationAnythingModule:
         masks = outputs[0]
         return masks
 
-    def process_image(self, image: np.ndarray, input_point: Tuple[int, int]):
+    def generate_coords_and_labels_from_bbox(
+        self, input_bbox_xyxy: List[int], resize_rate_from_orig: float
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        assert len(input_bbox_xyxy) == 4
+        input_bbox = np.array(input_bbox_xyxy).reshape(2, 2)
+        input_labels = np.array([2, 3])
+
+        onnx_coord = input_bbox[None, :, :]
+        onnx_label = input_labels[None, :].astype(np.float32)
+
+        coords = deepcopy(onnx_coord).astype(float)
+        coords[..., 0] = coords[..., 0] * resize_rate_from_orig
+        coords[..., 1] = coords[..., 1] * resize_rate_from_orig
+
+        onnx_coord = coords.astype("float32")
+        return onnx_coord, onnx_label
+
+    def decode_by_bbox_xyxy(
+        self,
+        embeddings: np.ndarray,
+        input_bbox_xyxy: Tuple[int, int, int, int],
+        resize_rate: float,
+        longer_side_size_resized_image: int,
+    ) -> np.ndarray:
+        onnx_coord, onnx_label = self.generate_coords_and_labels_from_bbox(
+            input_bbox_xyxy, resize_rate
+        )
+        # セグメンテーションの実行
+        onnx_mask_input = np.zeros((1, 1, 256, 256), dtype=np.float32)
+        onnx_has_mask_input = np.zeros(1, dtype=np.float32)
+        outputs = self.decoder.run(
+            None,
+            {
+                "image_embeddings": embeddings,
+                "point_coords": onnx_coord,
+                "point_labels": onnx_label,
+                "mask_input": onnx_mask_input,
+                "has_mask_input": onnx_has_mask_input,
+                "orig_im_size": np.array(
+                    [longer_side_size_resized_image, longer_side_size_resized_image],
+                    dtype=np.float32,
+                ),
+            },
+        )
+        masks = outputs[0]
+        return masks
+
+    def process_image(
+        self,
+        image: np.ndarray,
+        input_point: Optional[Tuple[int, int]] = None,
+        input_bbox_xyxy: Optional[Tuple[int, int, int, int]] = None,
+        embeddings: Optional[np.ndarray] = None,
+    ):
+        if input_point is None and input_bbox_xyxy is None:
+            raise ValueError("input_point and input_bbox_xyxy cannot be both None.")
+        else:
+            if input_point is not None and input_bbox_xyxy is not None:
+                raise ValueError(
+                    "input_point and input_bbox_xyxy cannot be both not None."
+                )
+
         # 画像の読み込みと前処理
         (
             image_processed,
@@ -180,15 +242,24 @@ class SegmentationAnythingModule:
         )
 
         # エンコーディング
-        embeddings = self.generate_image_embedding(image_processed, pad_h, pad_w)
+        if embeddings is None:
+            embeddings = self.generate_image_embedding(image_processed, pad_h, pad_w)
 
         # セグメンテーションの実行
-        masks = self.decode(
-            embeddings,
-            input_point,
-            resize_rate,
-            longer_side_size_resized_image,
-        )
+        if input_point is not None:
+            masks = self.decode_by_point(
+                embeddings,
+                input_point,
+                resize_rate,
+                longer_side_size_resized_image,
+            )
+        else:
+            masks = self.decode_by_bbox_xyxy(
+                embeddings,
+                input_bbox_xyxy,
+                resize_rate,
+                longer_side_size_resized_image,
+            )
 
         # マスクの処理
         mask = masks[0][0]
