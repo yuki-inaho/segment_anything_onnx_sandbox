@@ -106,8 +106,10 @@ class SegmentationAnythingModule:
         mask = (mask > 0).astype("uint8") * 255
         if pad_w != 0:
             mask_cropped = mask[:, pad_w:-pad_w]
-        if pad_h != 0:
+        elif pad_h != 0:
             mask_cropped = mask[pad_h:-pad_h]
+        else:
+            mask_cropped = mask
         mask_final = cv2.resize(
             mask_cropped,
             (orig_image_width, orig_image_height),
