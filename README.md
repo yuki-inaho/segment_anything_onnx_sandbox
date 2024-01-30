@@ -3,17 +3,23 @@
 - https://dev.to/andreygermanov/export-segment-anything-neural-network-to-onnx-the-missing-parts-43c8
 - https://github.com/facebookresearch/segment-anything/issues/16
 
+# Workflow
+
 ## Download a SAM model
+
+- https://github.com/facebookresearch/segment-anything
 
 ```
 wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth -O models/sam_vit_b_01ec64.pth
 ```
 
-## Install dependencies
+## Install dependencies (under the CUDA v11.8 environment)
 
 ```
-pip install -r requirements.txt
-cd segment-anything; pip install -e .
+git submodule --init --recursive \
+cd segment-anything \
+pip install -r requirements.txt \
+pip install -e .
 ```
 
 ## Convert the pytorch model to onnx model (image encoder)
@@ -25,7 +31,7 @@ python export_image_encoder.py \
 -o models/image_encoder_vit_b.onnx
 ```
 
-## Convert the pytorch model to onnx model ()
+## Convert the pytorch model to onnx model (mask decoder)
 
 ```
 python segment-anything/scripts/export_onnx_model.py \
@@ -35,8 +41,8 @@ python segment-anything/scripts/export_onnx_model.py \
 --return-single-mask
 ```
 
+## Run some processes
 
-# RUN
 ```
 python main.py \
 -i data/apple_5x4.jpg \
